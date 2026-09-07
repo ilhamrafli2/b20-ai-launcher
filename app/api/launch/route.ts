@@ -7,7 +7,7 @@ const B20_FACTORY = '0xB20f000000000000000000000000000000000000' as Address;
 const B20_ASSET_VARIANT = 0;
 const B20_PARAMS_VERSION = 1;
 const B20_DECIMALS = 18;
-const DEFAULT_SUPPLY = 1000000000n * 1000000000000000000n;
+const DEFAULT_SUPPLY = BigInt('1000000000') * BigInt('1000000000000000000');
 const MINT_ROLE = keccak256(toBytes('MINT_ROLE'));
 
 const FACTORY_ABI = [{ type: 'function', name: 'createB20', stateMutability: 'nonpayable', inputs: [
