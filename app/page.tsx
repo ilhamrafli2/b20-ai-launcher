@@ -24,13 +24,25 @@ function makeFreshName(s:Inspiration,i:number,pool:Inspiration[]){
 }
 function fallback():Inspiration[]{return [{name:'Stonks Exchange',symbol:'STONK',network:'base',volume24h:0,ageHours:1},{name:'Flower',symbol:'FLOWER',network:'base',volume24h:0,ageHours:2},{name:'BaseStonk',symbol:'BSTONK',network:'base',volume24h:0,ageHours:3}]}
 function imageFor(source:string){return `/api/token-image?q=${encodeURIComponent(source)}`}
+
+// Build a ticker from the final token name itself. Multi-word names use initials;
+// single-word names use a memorable 3-5 letter slice. Never invent an unrelated ticker.
+function tickerFromName(name:string){
+  const parts=name.replace(/[^a-zA-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean);
+  if(parts.length>=2){
+    const initials=parts.map(x=>x[0]).join('').toUpperCase();
+    return initials.slice(0,5);
+  }
+  return (parts[0]||'MEME').replace(/[^a-zA-Z0-9]/g,'').slice(0,5).toUpperCase();
+}
+
 function generateTokens(prompt:string,pool:Inspiration[]):Token[]{
   const count=parseCount(prompt),theme=requestedTheme(prompt),themeName=theme?cap(theme):null,src=pool.length?pool:fallback(),used=new Set<string>();
   return Array.from({length:count},(_,i)=>{
     const s=src[i%src.length];
     let name=themeName&&i===0?themeName:makeFreshName(s,i,src);
     let attempt=0; while(used.has(name.toLowerCase())&&attempt++<8) name=`${name}${attempt}`; used.add(name.toLowerCase());
-    const symbol=name.replace(/[^a-zA-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean).map(x=>x[0]).join('').slice(0,5).toUpperCase();
+    const symbol=tickerFromName(name);
     return {name,symbol,about:`Inspired by ${s.name} — a fresh ${s.network} pair ${s.ageHours.toFixed(1)}h old with $${Math.round(s.volume24h).toLocaleString()} 24h volume.`,image:imageFor(s.name),salt:randomSalt(`${name}-${symbol}-${i}`)};
   });
 }
@@ -48,5 +60,5 @@ export default function Home(){
  return <main className="wrap"><header><div><div className="eyebrow">BASE · B20 · PULSE</div><h1>AI Token Launcher</h1><p>Fresh names from live crypto trends + real web artwork.</p></div><div className="actions">{isConnected?<button className="ghost" onClick={()=>disconnect()}>{address?.slice(0,6)}…{address?.slice(-4)}</button>:<button disabled={isPending} onClick={connectWallet}>{isPending?'Opening…':'🟦 Connect Wallet'}</button>}</div></header>
  <nav className="tabs"><button className={tab==='create'?'tab active':'tab'} onClick={()=>setTab('create')}>🚀 Create</button><button className={tab==='pulse'?'tab active':'tab'} onClick={loadPulse}>⚡ Pulse</button><button className={tab==='rewards'?'tab active':'tab'} onClick={loadRewards}>💰 Rewards</button></nav>
  {tab==='create'?<><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4}/><p className="pulseIntro">Generator cap: <b>3 tokens/day</b>. Trends: ≤72h old and ≥$1K 24h volume. Artwork: real web image from Wikimedia Commons, not AI-generated.</p><div className="actions"><button onClick={generate}>🔥 Generate From Live Trends</button>{isConnected&&tokens.length>0&&<button className="primary" onClick={deployAll}>🚀 Launch {tokens.length}</button>}</div><div className="status"><span className="dot"/>{status} · Base Mainnet</div></section>{tokens.length>0&&<section className="card"><div className="sectionHead"><h2>Generated Tokens</h2><span>{deployed}/{tokens.length} live</span></div><div className="grid">{tokens.map((t,i)=><article className="token" key={t.salt}><img src={t.image} alt={`${t.name} ${t.symbol}`} loading="lazy"/><div><strong>{t.name}</strong><b>${t.symbol}</b><p>{t.about}</p><small>🌐 Real web artwork</small>{t.tokenAddress&&<small className="address">{t.tokenAddress}</small>}</div><small>#{i+1}</small></article>)}</div></section>}</>:tab==='pulse'?<section className="card"><div className="sectionHead"><h2>⚡ Live Trend Pulse</h2><button className="ghost small" onClick={loadPulse}>Refresh</button></div><p className="pulseIntro">New pools up to 72 hours old, minimum $1K volume, ranked by volume + activity across chains.</p><div className="pulseGrid">{pulse.map((p,i)=><article className="pulse" key={`${p.name}-${p.network}-${i}`}><div className="pulseIcon">{String(p.symbol||'?').slice(0,1)}</div><div className="pulseMain"><strong>{p.name}</strong><span>${p.symbol} · {p.network}</span><div><b>${Math.round(p.volume24h).toLocaleString()}</b><small>{p.ageHours.toFixed(1)}h</small></div></div><button className="quick" onClick={()=>{setPrompt(`Buatkan 1 token terinspirasi ${p.name} di Base`);setTab('create')}}>Generate</button></article>)}{!pulse.length&&<div className="empty">Press Refresh to load live Pulse.</div>}</div></section>:<section className="card"><div className="sectionHead"><div><h2>💰 Creator Rewards</h2><p className="pulseIntro">Trading-fee earnings for this connected wallet.</p></div><button className="ghost small" onClick={loadRewards} disabled={loadingRewards}>{loadingRewards?'Loading…':'Refresh'}</button></div><div className="rewardStats"><article><small>Claimable WETH</small><strong>{rewardTotals.claimable}</strong></article><article><small>Claimed WETH</small><strong>{rewardTotals.claimed}</strong></article><article><small>Lifetime WETH</small><strong>{rewardTotals.lifetime}</strong></article></div><div className="actions"><button className="primary" disabled={claiming||!rewards.length} onClick={claimRewards}>{claiming?'Claiming…':'💸 Claim Rewards'}</button></div><div className="grid">{rewards.map(r=><article className="token" key={r.tokenAddress}><div><strong>{r.name}</strong><b>${r.symbol}</b><p>Creator share {r.share}</p><small>Claimable: {r.claimable?.token0||'0'} {r.claimable?.token0Label||''} · {r.claimable?.token1||'0'} {r.claimable?.token1Label||''}</small></div><small>{r.claimed?.count||0} claims</small></article>)}{!rewards.length&&<div className="empty">Connect the creator wallet, then press Refresh.</div>}</div><p className="note">Claim uses your connected wallet to sign the transaction. No private key is sent to B20.</p></section>}
- <div className="status global"><span className="dot"/>{status}</div><section className="note"><strong>Flow:</strong> live trends → natural meme-style name → real web artwork → Base launch → Uniswap market → creator fee tracking.</section></main>;
+ <div className="status global"><span className="dot"/>{status}</div><section className="note"><strong>Flow:</strong> live trends → natural meme-style name → ticker derived from name → real web artwork → Base launch → Uniswap market → creator fee tracking.</section></main>;
 }
