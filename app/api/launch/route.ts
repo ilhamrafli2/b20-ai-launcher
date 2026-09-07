@@ -29,10 +29,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Ticker must contain only A-Z and 0-9, max 10 characters.' }, { status: 400 });
     }
 
+    // Prefer a normal Bankr user key: it avoids Partner provisioning while
+    // retaining Bankr's sponsored Base launch flow. Partner keys remain as a
+    // fallback for deployments that already have a provisioned partner org.
+    const userKey = process.env.BANKR_API_KEY;
     const partnerKey = process.env.BANKR_PARTNER_KEY;
-    if (!partnerKey) {
+    const authMode = userKey ? 'user' : partnerKey ? 'partner' : null;
+
+    if (!authMode) {
       return NextResponse.json(
-        { error: 'Bankr partner launch is not configured yet. Add BANKR_PARTNER_KEY to the Vercel production environment.' },
+        {
+          error: 'Bankr launch is not configured. Add BANKR_API_KEY (bk_usr_...) to Vercel Production. BANKR_PARTNER_KEY is also supported as a fallback.',
+        },
         { status: 503 },
       );
     }
@@ -40,13 +48,19 @@ export async function POST(request: Request) {
     const origin = new URL(request.url).origin;
     const image = `${origin}/api/avatar?name=${encodeURIComponent(name)}&symbol=${encodeURIComponent(symbol)}`;
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+    if (authMode === 'user') {
+      headers['X-API-Key'] = userKey!;
+    } else {
+      headers['X-Partner-Key'] = partnerKey!;
+    }
+
     const response = await fetch('https://api.bankr.bot/token-launches/deploy', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'X-Partner-Key': partnerKey,
-      },
+      headers,
       body: JSON.stringify({
         tokenName: name,
         tokenSymbol: symbol,
@@ -65,7 +79,7 @@ export async function POST(request: Request) {
       const retryAfter = response.headers.get('retry-after');
       const detail = data?.error || data?.message || `Bankr launch failed (${response.status})`;
       return NextResponse.json(
-        { error: retryAfter ? `${detail} Retry after ${retryAfter}s.` : detail, bankrStatus: response.status },
+        { error: retryAfter ? `${detail} Retry after ${retryAfter}s.` : detail, bankrStatus: response.status, authMode },
         { status: response.status >= 500 ? 502 : response.status },
       );
     }
@@ -73,6 +87,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       provider: 'bankr',
+      authMode,
+      sponsored: true,
       chain: 'base',
       tokenAddress: data.tokenAddress,
       poolId: data.poolId,
