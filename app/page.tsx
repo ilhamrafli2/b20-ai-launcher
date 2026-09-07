@@ -6,10 +6,27 @@ import { randomSalt, svgAvatar } from '@/lib/b20';
 
 type Token = { name: string; symbol: string; about: string; image: string; salt: `0x${string}` };
 const A = ['Nova','Hyper','Pixel','Quantum','Solar','Neon','Aero','Lunar','Turbo','Meta','Cosmo','Vertex'];
-const B = ['Forge','Spark','Core','Flow','Labs','Grid','Mint','Pulse','Wave','Chain','Byte','Vault'];
+const B = ['Rocket','Dragon','Panda','Doge','Cat','Bear','Wolf','Fish','Bird','Leaf','Fire','Ice','Wave','Diamond','Coin','Crown','Moon','Sun','Star','Atom','Bolt','Robot','Cyber','Forge','Core','Labs','Grid','Mint','Pulse','Chain','Vault'];
 const words = ['next-gen','community powered','AI-native','open ecosystem','onchain utility','experimental'];
+
 function parseCount(prompt: string) { const m = prompt.match(/(\d{1,3})\s*(?:token|tokens)/i); return Math.min(Math.max(Number(m?.[1] || 10), 1), 100); }
-function generateTokens(prompt: string): Token[] { const count = parseCount(prompt); return Array.from({ length: count }, (_, i) => { const name = `${A[(i * 7) % A.length]} ${B[(i * 11 + 3) % B.length]}`; const symbol = `${A[(i * 5) % A.length][0]}${B[(i * 9 + 1) % B.length].slice(0, 4)}`.toUpperCase(); const about = `${words[i % words.length]} token generated from your prompt.`; return { name, symbol, about, image: svgAvatar(name, symbol, i), salt: randomSalt(`${name}-${symbol}-${i}`) }; }); }
+function requestedTheme(prompt: string) {
+  const p = prompt.toLowerCase();
+  const themes = ['rocket','dragon','panda','doge','dog','cat','bear','wolf','fish','bird','leaf','fire','ice','wave','water','ocean','diamond','gem','coin','money','crown','king','moon','lunar','sun','solar','star','nova','atom','quantum','bolt','lightning','spark','robot','ai','byte','pixel','cyber','neon','aero','wing','forge','anvil','core','reactor','lab','labs','grid','mint','pulse','chain','vault'];
+  return themes.find(t => p.includes(t));
+}
+function generateTokens(prompt: string): Token[] {
+  const count = parseCount(prompt);
+  const requested = requestedTheme(prompt);
+  const themeName = requested ? requested[0].toUpperCase() + requested.slice(1) : null;
+  return Array.from({ length: count }, (_, i) => {
+    const base = themeName && i === 0 ? themeName : B[(i * 11 + 3) % B.length];
+    const name = themeName && i === 0 ? base : `${A[(i * 7) % A.length]} ${base}`;
+    const symbol = `${name.split(/\s+/).map(x => x[0]).join('').slice(0, 5)}${(i + 1).toString(36)}`.toUpperCase();
+    const about = `${words[i % words.length]} token themed around ${base.toLowerCase()}.`;
+    return { name, symbol, about, image: svgAvatar(name, symbol, i), salt: randomSalt(`${name}-${symbol}-${i}`) };
+  });
+}
 
 export default function Home() {
   const [prompt, setPrompt] = useState('Buatkan 100 token di Base dengan nama random, ticker random, image random, about random');
@@ -22,7 +39,7 @@ export default function Home() {
     try { setStatus(`Opening ${connector.name}…`); await connect({ connector }); }
     catch (e) { setStatus(`Wallet connection failed: ${e instanceof Error ? e.message : 'Try again'}`); }
   }
-  function generate() { setTokens(generateTokens(prompt)); setDeployed(0); setStatus('Preview generated — ready for sponsored launch'); }
+  function generate() { setTokens(generateTokens(prompt)); setDeployed(0); setStatus('Preview generated — artwork matched to token names'); }
   async function deployAll() {
     if (!address || !tokens.length) return;
     try {
@@ -39,5 +56,5 @@ export default function Home() {
   const canDeploy = isConnected && !!address && tokens.length > 0;
   const injected = connectors.findIndex(c => c.id === 'injected');
   const coinbase = connectors.findIndex(c => c.id === 'coinbaseWalletSDK');
-  return <main className="wrap"><header><div><div className="eyebrow">BASE · B20 · CC0 SPONSORED</div><h1>B20 AI Launcher</h1><p>Prompt → generate → sponsored launch. No seed phrase. No paid fallback.</p></div><div className="actions"><a className="ghost" href="https://cc0.company/my" target="_blank" rel="noreferrer">Login / Open CC0</a>{isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <><button disabled={isPending} onClick={() => connectWallet(coinbase >= 0 ? coinbase : undefined)}>{isPending ? 'Opening Wallet…' : '🟦 Coinbase Wallet'}</button>{injected >= 0 && <button className="ghost" disabled={isPending} onClick={() => connectWallet(injected)}>🌐 Browser Wallet</button>}</>}</div></header><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} /><div className="actions"><button onClick={generate}>Generate Preview</button>{canDeploy && <button className="primary" onClick={deployAll}>🚀 Sponsored Deploy {tokens.length}</button>}</div><div className="status"><span className="dot" />{status} · Base Mainnet</div></section>{tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div><div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt={`${t.name} ${t.symbol}`} /><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div></section>}<section className="note"><strong>Wallet:</strong> pilih Coinbase Wallet atau Browser Wallet. Di iPhone Safari biasa, browser wallet yang tidak punya extension tidak akan muncul; buka launcher dari dalam wallet browser. <strong>CC0:</strong> login tetap dikelola CC0/Privy. <strong>Gas:</strong> sponsored launch tetap fail-closed jika sponsorship CC0 tidak tersedia.</section></main>;
+  return <main className="wrap"><header><div><div className="eyebrow">BASE · B20 · CC0 SPONSORED</div><h1>B20 AI Launcher</h1><p>Prompt → generate → sponsored launch. No seed phrase. No paid fallback.</p></div><div className="actions"><a className="ghost" href="https://cc0.company/my" target="_blank" rel="noreferrer">Login / Open CC0</a>{isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <><button disabled={isPending} onClick={() => connectWallet(coinbase >= 0 ? coinbase : undefined)}>{isPending ? 'Opening Wallet…' : '🟦 Coinbase Wallet'}</button>{injected >= 0 && <button className="ghost" disabled={isPending} onClick={() => connectWallet(injected)}>🌐 Browser Wallet</button>}</>}</div></header><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} /><div className="actions"><button onClick={generate}>Generate Preview</button>{canDeploy && <button className="primary" onClick={deployAll}>🚀 Sponsored Deploy {tokens.length}</button>}</div><div className="status"><span className="dot" />{status} · Base Mainnet</div></section>{tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div><div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt={`${t.name} ${t.symbol}`} /><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div></section>}<section className="note"><strong>Artwork:</strong> token name sekarang menentukan objek pixel-art. Contoh ROCKET → rocket, DRAGON → dragon, DOGE → dog, DIAMOND → diamond. <strong>Wallet:</strong> pilih Coinbase Wallet atau Browser Wallet. <strong>CC0:</strong> login tetap dikelola CC0/Privy. <strong>Gas:</strong> sponsored launch fail-closed jika sponsorship CC0 tidak tersedia.</section></main>;
 }
