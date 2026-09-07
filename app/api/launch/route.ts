@@ -37,9 +37,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Bankr partner launches sign from the partner organization wallet, so the
-    // end-user wallet does not need native ETH. The creator wallet receives the
-    // creator fee share through feeRecipient.
     const origin = new URL(request.url).origin;
     const image = `${origin}/api/avatar?name=${encodeURIComponent(name)}&symbol=${encodeURIComponent(symbol)}`;
 
@@ -57,6 +54,9 @@ export async function POST(request: Request) {
         image,
         chain: 'base',
         feeRecipient: { type: 'wallet', value: address },
+        // Keep the creator reward in the quote asset (WETH) for a simple,
+        // transparent rewards dashboard and predictable creator accounting.
+        quoteOnlyFees: true,
       }),
     });
 
@@ -79,6 +79,8 @@ export async function POST(request: Request) {
       txHash: data.txHash,
       activityId: data.activityId,
       feeDistribution: data.feeDistribution,
+      quoteOnlyFees: true,
+      rewardRecipient: address,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Bankr launch failed.';
