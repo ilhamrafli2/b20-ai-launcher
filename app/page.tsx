@@ -14,25 +14,27 @@ function generateTokens(prompt: string): Token[] { const count = parseCount(prom
 export default function Home() {
   const [prompt, setPrompt] = useState('Buatkan 100 token di Base dengan nama random, ticker random, image random, about random');
   const [tokens, setTokens] = useState<Token[]>([]); const [status, setStatus] = useState('Ready'); const [deployed, setDeployed] = useState(0);
-  const { address, isConnected } = useAccount(); const { connect, connectors } = useConnect(); const { disconnect } = useDisconnect();
-  async function connectWallet() { const connector = connectors[0]; if (connector) connect({ connector }); }
+  const { address, isConnected } = useAccount(); const { connect, connectors, isPending } = useConnect(); const { disconnect } = useDisconnect();
+  async function connectWallet() {
+    const available = connectors.filter(c => c.ready !== false);
+    if (!available.length) { setStatus('No wallet detected. Open this page inside a wallet browser or use Coinbase Wallet.'); return; }
+    try { setStatus('Opening wallet…'); await connect({ connector: available[0] }); setStatus('Wallet connected'); }
+    catch (e) { setStatus(`Wallet connection failed: ${e instanceof Error ? e.message : 'Try again'}`); }
+  }
   function generate() { setTokens(generateTokens(prompt)); setDeployed(0); setStatus('Preview generated — ready for sponsored launch'); }
   async function deployAll() {
     if (!address || !tokens.length) return;
     try {
       setStatus('Checking CC0 sponsored gas…');
       for (let i = deployed; i < tokens.length; i++) {
-        const t = tokens[i];
-        setStatus(`Sponsored launch ${i + 1}/${tokens.length}…`);
+        const t = tokens[i]; setStatus(`Sponsored launch ${i + 1}/${tokens.length}…`);
         const response = await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: t.name, symbol: t.symbol, about: t.about, image: t.image, rewardRecipient: address }) });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data?.error || 'Sponsored launch failed');
-        setDeployed(i + 1);
-        setStatus(`LIVE ${i + 1}/${tokens.length} — CC0 paid deployment gas`);
+        const data = await response.json(); if (!response.ok) throw new Error(data?.error || 'Sponsored launch failed');
+        setDeployed(i + 1); setStatus(`LIVE ${i + 1}/${tokens.length} — CC0 paid deployment gas`);
       }
       setStatus(`Done — ${tokens.length} B20 launch(es). User wallet gas: 0 ETH.`);
     } catch (e) { setStatus(`Stopped safely: ${e instanceof Error ? e.message : 'sponsored launch failed'}`); }
   }
   const canDeploy = isConnected && !!address && tokens.length > 0;
-  return <main className="wrap"><header><div><div className="eyebrow">BASE · B20 · CC0 SPONSORED</div><h1>B20 AI Launcher</h1><p>Prompt → generate → sponsored launch. No seed phrase. No paid fallback.</p></div><div className="actions"> <a className="ghost" href="https://cc0.company/my" target="_blank" rel="noreferrer">Login / Open CC0</a>{isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <button onClick={connectWallet}>Connect Wallet</button>}</div></header><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} /><div className="actions"><button onClick={generate}>Generate Preview</button>{canDeploy && <button className="primary" onClick={deployAll}>🚀 Sponsored Deploy {tokens.length}</button>}</div><div className="status"><span className="dot" />{status} · Base Mainnet</div></section>{tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div><div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt=""/><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div></section>}<section className="note"><strong>CC0 account:</strong> use “Login / Open CC0” to sign in to your CC0 account. The CC0 site manages its own Privy session; this button does not copy credentials or private keys into this app. <strong>Gas sponsorship:</strong> deployment requests go through the server-side CC0 sponsored path. If CC0 sponsorship/session is unavailable, the app stops and never asks your wallet to pay gas.</section></main>;
+  return <main className="wrap"><header><div><div className="eyebrow">BASE · B20 · CC0 SPONSORED</div><h1>B20 AI Launcher</h1><p>Prompt → generate → sponsored launch. No seed phrase. No paid fallback.</p></div><div className="actions"><a className="ghost" href="https://cc0.company/my" target="_blank" rel="noreferrer">Login / Open CC0</a>{isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <button disabled={isPending} onClick={connectWallet}>{isPending ? 'Opening Wallet…' : 'Connect Wallet'}</button>}</div></header><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} /><div className="actions"><button onClick={generate}>Generate Preview</button>{canDeploy && <button className="primary" onClick={deployAll}>🚀 Sponsored Deploy {tokens.length}</button>}</div><div className="status"><span className="dot" />{status} · Base Mainnet</div></section>{tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div><div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt=""/><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div></section>}<section className="note"><strong>Wallet:</strong> mobile browsers may not expose an injected wallet. The launcher now supports injected wallets plus Coinbase Wallet. <strong>CC0:</strong> “Login / Open CC0” opens your CC0 account separately; it does not copy credentials or private keys into this app. <strong>Gas:</strong> launches use the server-side CC0 sponsored path and stop safely if sponsorship is unavailable.</section></main>;
 }
