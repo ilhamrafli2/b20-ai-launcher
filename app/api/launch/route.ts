@@ -8,14 +8,12 @@ const B20_ASSET_VARIANT = 0;
 const B20_PARAMS_VERSION = 1;
 const B20_DECIMALS = 18;
 const DEFAULT_SUPPLY = BigInt('1000000000') * BigInt('1000000000000000000');
-const MINT_ROLE = keccak256(toBytes('MINT_ROLE'));
 
 const FACTORY_ABI = [{ type: 'function', name: 'createB20', stateMutability: 'nonpayable', inputs: [
   { name: 'variant', type: 'uint8' }, { name: 'salt', type: 'bytes32' }, { name: 'params', type: 'bytes' }, { name: 'initCalls', type: 'bytes[]' },
 ], outputs: [{ name: 'tokenAddress', type: 'address' }] }] as const;
 
 const TOKEN_ABI = [
-  { type: 'function', name: 'grantRole', stateMutability: 'nonpayable', inputs: [{ name: 'role', type: 'bytes32' }, { name: 'account', type: 'address' }], outputs: [] },
   { type: 'function', name: 'mint', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
 ] as const;
 
@@ -24,7 +22,8 @@ function clean(value: unknown, max: number) { return typeof value === 'string' ?
 
 function predictB20Address(deployer: Address, salt: `0x${string}`): Address {
   const h = keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'bytes32' }], [deployer, salt]));
-  return (`0xB20000000000000000000000${h.slice(2, 20)}`) as Address;
+  const tail = h.slice(2, 20); // first 9 bytes of keccak256(abi.encode(sender, salt))
+  return (`0xB2${'0'.repeat(19)}${tail}`) as Address;
 }
 
 export async function POST(request: Request) {
@@ -39,12 +38,30 @@ export async function POST(request: Request) {
     if (!/^[A-Z0-9]{1,10}$/.test(symbol)) return NextResponse.json({ error: 'Ticker must contain only A-Z and 0-9, max 10 characters.' }, { status: 400 });
 
     const salt = keccak256(toBytes(saltInput));
-    const params = encodeAbiParameters([{ type: 'uint8' }, { type: 'string' }, { type: 'string' }, { type: 'address' }, { type: 'uint8' }], [B20_PARAMS_VERSION, name, symbol, address, B20_DECIMALS]);
-    const grantRole = encodeFunctionData({ abi: TOKEN_ABI, functionName: 'grantRole', args: [MINT_ROLE, address] });
+    // Fixed-supply asset: no admin and no persistent mint role. The factory's
+    // bootstrap window allows the initial mint before initialization closes.
+    const params = encodeAbiParameters(
+      [{ type: 'uint8' }, { type: 'string' }, { type: 'string' }, { type: 'address' }, { type: 'uint8' }],
+      [B20_PARAMS_VERSION, name, symbol, '0x0000000000000000000000000000000000000000', B20_DECIMALS],
+    );
     const mint = encodeFunctionData({ abi: TOKEN_ABI, functionName: 'mint', args: [address, DEFAULT_SUPPLY] });
-    const data = encodeFunctionData({ abi: FACTORY_ABI, functionName: 'createB20', args: [B20_ASSET_VARIANT, salt, params, [grantRole, mint]] });
+    const data = encodeFunctionData({ abi: FACTORY_ABI, functionName: 'createB20', args: [B20_ASSET_VARIANT, salt, params, [mint]] });
 
-    return NextResponse.json({ ok: true, provider: 'base-b20-native', sponsored: true, chain: 'base-mainnet', chainId: 8453, to: B20_FACTORY, data, value: '0x0', tokenAddress: predictB20Address(address, salt), rewardRecipient: address, supply: DEFAULT_SUPPLY.toString(), paymasterProxy: '/api/paymaster', note: 'Native Base B20 Asset creation on Base Mainnet. User sends no ETH in this call.' });
+    return NextResponse.json({
+      ok: true,
+      provider: 'base-b20-native',
+      sponsored: true,
+      chain: 'base-mainnet',
+      chainId: 8453,
+      to: B20_FACTORY,
+      data,
+      value: '0x0',
+      tokenAddress: predictB20Address(address, salt),
+      rewardRecipient: address,
+      supply: DEFAULT_SUPPLY.toString(),
+      paymasterProxy: '/api/paymaster',
+      note: 'Native Base B20 Asset creation on Base Mainnet. Fixed supply is minted during the factory bootstrap; user sends no ETH in this call.',
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'B20 launch preparation failed.' }, { status: 400 });
   }
