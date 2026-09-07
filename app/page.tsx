@@ -1,10 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useAccount, useConnect, useDisconnect, useSwitchChain, useWriteContract } from 'wagmi';
+import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import { Cc0B20Launchpad } from '@cc0company/sdk';
+
 import { base } from 'wagmi/chains';
-import { B20_FACTORY, B20_FACTORY_ABI, encodeAssetParams, randomSalt, svgAvatar } from '@/lib/b20';
-import type { Address } from 'viem';
+import { randomSalt, svgAvatar } from '@/lib/b20';
 
 type Token = { name: string; symbol: string; about: string; image: string; salt: `0x${string}` };
 
@@ -32,14 +33,12 @@ export default function Home() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [status, setStatus] = useState('Ready');
   const [deployed, setDeployed] = useState(0);
-  const { address, isConnected, chainId } = useAccount();
+  const [sponsored, setSponsored] = useState<boolean | null>(null);
+  const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync } = useWriteContract();
 
-  const canDeploy = isConnected && !!address && tokens.length > 0;
-  const networkLabel = useMemo(() => chainId === base.id ? 'Base Mainnet' : chainId ? `Chain ${chainId}` : 'Not connected', [chainId]);
+  const networkLabel = useMemo(() => isConnected ? `Base · ${address?.slice(0, 6)}…${address?.slice(-4)}` : 'Wallet not connected', [isConnected, address]);
 
   async function connectWallet() {
     const connector = connectors[0];
@@ -49,49 +48,67 @@ export default function Home() {
   function generate() {
     setTokens(generateTokens(prompt));
     setDeployed(0);
-    setStatus('Preview generated — review before signing');
+    setSponsored(null);
+    setStatus('Preview generated — review before sponsored launch');
   }
 
-  async function deployAll() {
-    if (!address) return;
+  async function deployAllSponsored() {
+    if (!address || tokens.length === 0) return;
     try {
-      if (chainId !== base.id) await switchChainAsync({ chainId: base.id });
-      setStatus('Deploying… your wallet may ask for a signature for each transaction.');
+      const b20 = new Cc0B20Launchpad({ chainId: base.id });
+      setStatus('Checking CC0 sponsorship…');
+      const sponsorship = await b20.sponsorshipStatus();
+      setSponsored(Boolean(sponsorship.active));
+      if (!sponsorship.active) {
+        setStatus('CC0 sponsorship is currently inactive or your wallet is over the daily cap. No gas will be charged by this button.');
+        return;
+      }
+
+      setStatus('Sponsored mode active — CC0 pays deployment gas.');
       for (let i = deployed; i < tokens.length; i++) {
         const t = tokens[i];
-        await writeContractAsync({
-          address: B20_FACTORY,
-          abi: B20_FACTORY_ABI,
-          functionName: 'createB20',
-          args: [0, t.salt, encodeAssetParams(t.name, t.symbol, address as Address, 18), []],
-          value: 0n,
-          chainId: base.id,
+        await b20.launchB20Sponsored({
+          name: t.name,
+          symbol: t.symbol,
+          image: t.image,
+          description: t.about,
+          supply: '1000000000',
+          lpPreset: 'degen',
+          adminMode: 'managed',
+          rewardRecipient: address,
         });
         setDeployed(i + 1);
-        setStatus(`Deployed ${i + 1}/${tokens.length}`);
+        setStatus(`Sponsored launch ${i + 1}/${tokens.length} complete`);
       }
-      setStatus(`Done — ${tokens.length} B20 token(s) submitted.`);
+      setStatus(`Done — ${tokens.length} B20 token(s) launched with CC0 sponsorship.`);
     } catch (e) {
-      setStatus(`Stopped: ${e instanceof Error ? e.message : 'transaction rejected'}`);
+      setStatus(`Stopped: ${e instanceof Error ? e.message : 'sponsored launch failed'}`);
     }
   }
 
+  const canLaunch = isConnected && !!address && tokens.length > 0;
+
   return <main className="wrap">
-    <header><div><div className="eyebrow">BASE · B20</div><h1>B20 AI Launcher</h1><p>Prompt → generate → connect wallet → deploy.</p></div>
+    <header>
+      <div><div className="eyebrow">BASE · B20 · CC0 SPONSORED</div><h1>B20 AI Launcher</h1><p>Prompt → generate → CC0 sponsors deployment gas → B20 live.</p></div>
       {isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <button onClick={connectWallet}>Connect Wallet</button>}
     </header>
 
     <section className="card hero">
       <label>Describe your launch</label>
       <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} />
-      <div className="actions"><button onClick={generate}>Generate Preview</button>{canDeploy && <button className="primary" onClick={deployAll}>Deploy {tokens.length} B20</button>}</div>
+      <div className="actions">
+        <button onClick={generate}>Generate Preview</button>
+        {canLaunch && <button className="primary" onClick={deployAllSponsored}>Launch {tokens.length} B20 — Sponsored</button>}
+      </div>
       <div className="status"><span className="dot" />{status} · {networkLabel}</div>
+      {sponsored !== null && <div className="status">CC0 sponsorship: <strong>{sponsored ? 'ACTIVE — no ETH required for deployment' : 'INACTIVE — launch blocked to prevent gas charge'}</strong></div>}
     </section>
 
-    {tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div>
+    {tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} launched</span></div>
       <div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt=""/><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div>
     </section>}
 
-    <section className="note"><strong>Safety:</strong> this app never asks for your seed phrase or private key. The current MVP uses normal wallet transactions; true one-approval automation requires an account-abstraction/paymaster layer and explicit spending authorization.</section>
+    <section className="note"><strong>Gas:</strong> this launcher uses CC0's sponsored B20 flow. When sponsorship is active, CC0's sponsor wallet signs and pays deployment gas; the creator wallet remains the reward recipient. The app never asks for a seed phrase/private key and intentionally stops instead of falling back to a paid transaction. CC0 applies a per-wallet daily sponsorship cap.</section>
   </main>;
 }
