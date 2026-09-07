@@ -21,9 +21,10 @@ type Json = Record<string, any>;
 function clean(value: unknown, max: number) { return typeof value === 'string' ? value.trim().slice(0, max) : ''; }
 
 function predictB20Address(deployer: Address, salt: `0x${string}`): Address {
-  // Canonical B20 address: [0xB2 + 9 zero bytes][variant byte][9-byte hash tail].
+  // Canonical B20 address: 10-byte 0xB2 prefix + variant byte + 9-byte hash tail.
   const h = keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'bytes32' }], [deployer, salt]));
-  return (`0xB2${'0'.repeat(20)}${h.slice(2, 20)}`) as Address;
+  const variantHex = B20_ASSET_VARIANT.toString(16).padStart(2, '0');
+  return (`0xB2${'0'.repeat(18)}${variantHex}${h.slice(2, 20)}`) as Address;
 }
 
 export async function POST(request: Request) {
