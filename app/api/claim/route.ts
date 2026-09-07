@@ -7,10 +7,12 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const beneficiaryAddress = typeof body?.beneficiaryAddress === 'string' ? body.beneficiaryAddress.trim() : '';
-    const tokenAddresses = Array.isArray(body?.tokenAddresses) ? body.tokenAddresses.filter((x: unknown): x is string => typeof x === 'string') : [];
+    const tokenAddresses: string[] = Array.isArray(body?.tokenAddresses)
+      ? body.tokenAddresses.filter((x: unknown): x is string => typeof x === 'string')
+      : [];
 
     if (!isAddress(beneficiaryAddress)) return NextResponse.json({ error: 'Invalid beneficiary wallet.' }, { status: 400 });
-    if (!tokenAddresses.length || tokenAddresses.length > 50 || tokenAddresses.some((x) => !isAddress(x))) {
+    if (!tokenAddresses.length || tokenAddresses.length > 50 || tokenAddresses.some((x: string) => !isAddress(x))) {
       return NextResponse.json({ error: 'Provide 1–50 valid token addresses.' }, { status: 400 });
     }
 
