@@ -17,7 +17,7 @@ function requestedTheme(prompt: string) {
   return themes.find(t => p.includes(t));
 }
 function inspirationWord(name: string) {
-  const stop = new Set(['the','token','coin','finance','finance','protocol','official','inu','usd','usdc','usdt','wrapped','weth','sol','eth']);
+  const stop = new Set(['the','token','coin','finance','official','inu','usd','usdc','usdt','wrapped','weth','sol','eth']);
   const parts = name.replace(/[^a-zA-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
   return parts.find(x => x.length >= 3 && !stop.has(x.toLowerCase())) || 'Nova';
 }
@@ -71,18 +71,17 @@ export default function Home() {
   async function deployAll() {
     if (!address || !tokens.length) return;
     try {
-      setStatus('Checking CC0 sponsored gas…');
       for (let i = deployed; i < tokens.length; i++) {
-        const t = tokens[i]; setStatus(`Sponsored launch ${i + 1}/${tokens.length}…`);
+        const t = tokens[i]; setStatus(`Bankr launch ${i + 1}/${tokens.length}…`);
         const response = await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: t.name, symbol: t.symbol, about: t.about, image: t.image, rewardRecipient: address }) });
-        const data = await response.json(); if (!response.ok) throw new Error(data?.error || 'Sponsored launch failed');
-        setDeployed(i + 1); setStatus(`LIVE ${i + 1}/${tokens.length} — CC0 paid deployment gas`);
+        const data = await response.json(); if (!response.ok) throw new Error(data?.error || 'Bankr launch failed');
+        setDeployed(i + 1); setStatus(`LIVE ${i + 1}/${tokens.length} — Base market pool created`);
       }
-      setStatus(`Done — ${tokens.length} B20 launch(es). User wallet gas: 0 ETH.`);
-    } catch (e) { setStatus(`Stopped safely: ${e instanceof Error ? e.message : 'sponsored launch failed'}`); }
+      setStatus(`Done — ${tokens.length} Bankr launch(es) on Base. User wallet gas: 0 ETH.`);
+    } catch (e) { setStatus(`Stopped safely: ${e instanceof Error ? e.message : 'Bankr launch failed'}`); }
   }
   const canDeploy = isConnected && !!address && tokens.length > 0;
   const injected = connectors.findIndex(c => c.id === 'injected');
   const coinbase = connectors.findIndex(c => c.id === 'coinbaseWalletSDK');
-  return <main className="wrap"><header><div><div className="eyebrow">BASE · B20 · LIVE TREND INSPIRED</div><h1>B20 AI Launcher</h1><p>Fresh pairs → filtered by age & volume → new token names → matching pixel-art.</p></div><div className="actions"><a className="ghost" href="https://cc0.company/my" target="_blank" rel="noreferrer">Login / Open CC0</a>{isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <><button disabled={isPending} onClick={() => connectWallet(coinbase >= 0 ? coinbase : undefined)}>{isPending ? 'Opening Wallet…' : '🟦 Coinbase Wallet'}</button>{injected >= 0 && <button className="ghost" disabled={isPending} onClick={() => connectWallet(injected)}>🌐 Browser Wallet</button>}</>}</div></header><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} /><div className="actions"><button onClick={generate}>🔥 Generate From Live Trends</button>{canDeploy && <button className="primary" onClick={deployAll}>🚀 Sponsored Deploy {tokens.length}</button>}</div><div className="status"><span className="dot" />{status} · Base Mainnet</div></section>{tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div><div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt={`${t.name} ${t.symbol}`} /><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div></section>}<section className="note"><strong>Discovery filter:</strong> fresh pools across GeckoTerminal-supported networks, maximum 24 hours old and minimum $1,000 24h volume. <strong>Names:</strong> generated as new combinations from qualifying names, not direct copies. <strong>Artwork:</strong> the resulting token name determines the pixel-art subject. <strong>CC0:</strong> sponsored launch remains fail-closed when sponsorship is unavailable.</section></main>;
+  return <main className="wrap"><header><div><div className="eyebrow">BASE · BANKR · LIVE TREND INSPIRED</div><h1>AI Token Launcher</h1><p>Fresh pairs → filtered by age & volume → new token names → matching pixel-art → Bankr market.</p></div><div className="actions">{isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <><button disabled={isPending} onClick={() => connectWallet(coinbase >= 0 ? coinbase : undefined)}>{isPending ? 'Opening Wallet…' : '🟦 Coinbase Wallet'}</button>{injected >= 0 && <button className="ghost" disabled={isPending} onClick={() => connectWallet(injected)}>🌐 Browser Wallet</button>}</>}</div></header><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} /><div className="actions"><button onClick={generate}>🔥 Generate From Live Trends</button>{canDeploy && <button className="primary" onClick={deployAll}>🚀 Bankr Deploy {tokens.length}</button>}</div><div className="status"><span className="dot" />{status} · Base Mainnet</div></section>{tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div><div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt={`${t.name} ${t.symbol}`} /><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div></section>}<section className="note"><strong>Discovery filter:</strong> fresh pools across GeckoTerminal-supported networks, maximum 24 hours old and minimum $1,000 24h volume. <strong>Names:</strong> generated as new combinations from qualifying names, not direct copies. <strong>Artwork:</strong> the resulting token name determines the pixel-art subject. <strong>Bankr:</strong> Base launch creates a Uniswap v4 liquidity pool and the token is immediately tradeable; creator fees route to the connected wallet.</section></main>;
 }
