@@ -12,14 +12,14 @@ type Reward = { tokenAddress:string; name:string; symbol:string; share:string; c
 const STOP = new Set(['the','token','coin','finance','official','exchange','wrapped','weth','usdc','usdt','sol','eth','base','network','protocol','bot']);
 const STYLE_SUFFIXES = ['Club','Gang','Core','Maxx','IRL','Wave','Mode','World','Era','House'];
 
-function parseCount(p:string){const m=p.match(/(\\d{1,3})\\s*(?:token|tokens)/i);return Math.min(Math.max(Number(m?.[1]||3),1),3)}
+function parseCount(p:string){const m=p.match(/(\d{1,3})\s*(?:token|tokens)/i);return Math.min(Math.max(Number(m?.[1]||3),1),3)}
 function requestedTheme(p:string){const themes=['rocket','dragon','panda','doge','dog','cat','bear','wolf','fish','bird','leaf','fire','ice','wave','water','ocean','diamond','gem','coin','money','crown','king','moon','lunar','sun','solar','star','atom','quantum','bolt','lightning','spark','robot','ai','byte','pixel','cyber','neon','aero','wing','forge','anvil','core','reactor','lab','labs','grid','mint','pulse','chain','vault'];return themes.find(t=>p.toLowerCase().includes(t))}
-function trendWords(n:string){return n.replace(/[^a-zA-Z0-9 ]/g,' ').split(/\\s+/).filter(Boolean).filter(x=>x.length>=3&&!STOP.has(x.toLowerCase())).slice(0,3)}
+function trendWords(n:string){return n.replace(/[^a-zA-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean).filter(x=>x.length>=3&&!STOP.has(x.toLowerCase())).slice(0,3)}
 function cap(s:string){return s.charAt(0).toUpperCase()+s.slice(1).toLowerCase()}
 function makeFreshName(s:Inspiration,i:number,pool:Inspiration[]){const own=trendWords(s.name);const other=trendWords(pool[(i+1)%pool.length]?.name||'');const a=cap(own[0]||s.symbol||'Meme'),b=cap(other[0]||'Base');const patterns=[`${a}${b}`,`${a} ${STYLE_SUFFIXES[i%STYLE_SUFFIXES.length]}`,`${a}${['y','o','ie','x','z'][i%5]}`,`${a} ${b}`,`${a}Mode`];return patterns[i%patterns.length]}
 function fallback():Inspiration[]{return [{name:'Stonks Exchange',symbol:'STONK',network:'base',volume24h:0,ageHours:1},{name:'Flower',symbol:'FLOWER',network:'base',volume24h:0,ageHours:2},{name:'BaseStonk',symbol:'BSTONK',network:'base',volume24h:0,ageHours:3}]}
 function imageFor(source:string){return `/api/token-image?q=${encodeURIComponent(source)}`}
-function tickerFromName(name:string){const parts=name.replace(/[^a-zA-Z0-9 ]/g,' ').split(/\\s+/).filter(Boolean);if(parts.length>=2)return parts.map(x=>x[0]).join('').toUpperCase().slice(0,5);return (parts[0]||'MEME').replace(/[^a-zA-Z0-9]/g,'').slice(0,5).toUpperCase()}
+function tickerFromName(name:string){const parts=name.replace(/[^a-zA-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean);if(parts.length>=2)return parts.map(x=>x[0]).join('').toUpperCase().slice(0,5);return (parts[0]||'MEME').replace(/[^a-zA-Z0-9]/g,'').slice(0,5).toUpperCase()}
 function generateTokens(prompt:string,pool:Inspiration[]):Token[]{const count=parseCount(prompt),theme=requestedTheme(prompt),themeName=theme?cap(theme):null,src=pool.length?pool:fallback(),used=new Set<string>();return Array.from({length:count},(_,i)=>{const s=src[i%src.length];let name=themeName&&i===0?themeName:makeFreshName(s,i,src);let attempt=0;while(used.has(name.toLowerCase())&&attempt++<8)name=`${name}${attempt}`;used.add(name.toLowerCase());const symbol=tickerFromName(name);return{name,symbol,about:`Inspired by ${s.name} — a fresh ${s.network} pair ${s.ageHours.toFixed(1)}h old with $${Math.round(s.volume24h).toLocaleString()} 24h volume.`,image:imageFor(s.name),salt:randomSalt(`${name}-${symbol}-${i}`)}})}
 
 export default function Home(){
