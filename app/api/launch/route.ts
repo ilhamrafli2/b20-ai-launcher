@@ -1,156 +1,80 @@
 import { NextResponse } from 'next/server';
-import { isAddress } from 'viem';
+import { encodeAbiParameters, encodeFunctionData, isAddress, keccak256, toBytes, type Address } from 'viem';
 
 export const runtime = 'nodejs';
 
-const MAX_NAME = 100;
-const MAX_SYMBOL = 10;
-const MAX_ABOUT = 500;
-const MCP_URL = 'https://bonker.wtf/api/mcp';
+const B20_FACTORY = '0xB20f000000000000000000000000000000000000' as Address;
+const B20_ASSET_VARIANT = 0;
+const B20_PARAMS_VERSION = 1;
+const B20_DECIMALS = 18;
+const DEFAULT_SUPPLY = 1_000_000_000n * 10n ** 18n;
+const MINT_ROLE = keccak256(toBytes('MINT_ROLE'));
+
+const FACTORY_ABI = [{
+  type: 'function',
+  name: 'createB20',
+  stateMutability: 'nonpayable',
+  inputs: [
+    { name: 'variant', type: 'uint8' },
+    { name: 'salt', type: 'bytes32' },
+    { name: 'params', type: 'bytes' },
+    { name: 'initCalls', type: 'bytes[]' },
+  ],
+  outputs: [{ name: 'tokenAddress', type: 'address' }],
+}] as const;
+
+const TOKEN_ABI = [
+  { type: 'function', name: 'grantRole', stateMutability: 'nonpayable', inputs: [{ name: 'role', type: 'bytes32' }, { name: 'account', type: 'address' }], outputs: [] },
+  { type: 'function', name: 'mint', stateMutability: 'nonpayable', inputs: [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+] as const;
 
 type Json = Record<string, any>;
+function clean(value: unknown, max: number) { return typeof value === 'string' ? value.trim().slice(0, max) : ''; }
 
-function clean(value: unknown, max: number) {
-  return typeof value === 'string' ? value.trim().slice(0, max) : '';
-}
-
-async function mcpRequest(method: string, params: Json, key: string, id: number, sessionId?: string) {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${key}`,
-    'Content-Type': 'application/json',
-    Accept: 'application/json, text/event-stream',
-  };
-  if (sessionId) headers['Mcp-Session-Id'] = sessionId;
-
-  const response = await fetch(MCP_URL, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-    cache: 'no-store',
-  });
-
-  const text = await response.text();
-  let payload: any = null;
-  for (const line of text.split(/\r?\n/).reverse()) {
-    const candidate = line.startsWith('data:') ? line.slice(5).trim() : line.trim();
-    if (!candidate || candidate === '[DONE]') continue;
-    try {
-      payload = JSON.parse(candidate);
-      break;
-    } catch {}
-  }
-  if (!payload) {
-    try { payload = JSON.parse(text); } catch { payload = { error: text || `Bonker MCP HTTP ${response.status}` }; }
-  }
-  if (!response.ok) throw new Error(payload?.error?.message || payload?.message || `Bonker MCP HTTP ${response.status}`);
-  if (payload?.error) throw new Error(payload.error.message || 'Bonker MCP request failed.');
-  return { payload, sessionId: response.headers.get('mcp-session-id') || sessionId };
-}
-
-function toolResult(payload: any) {
-  return payload?.result?.structuredContent || payload?.result?.content || payload?.result || payload;
-}
-
-function findDeep(value: any, keys: string[]): any {
-  if (!value || typeof value !== 'object') return undefined;
-  for (const key of keys) if (value[key] != null) return value[key];
-  for (const child of Object.values(value)) {
-    const found = findDeep(child, keys);
-    if (found != null) return found;
-  }
-  return undefined;
-}
-
-function buildPrepareArgs(schema: any, input: {name:string;symbol:string;description:string;image:string;address:string}) {
-  const props = schema?.properties || {};
-  const args: Json = {};
-  const set = (names: string[], value: any) => {
-    const key = names.find((x) => Object.prototype.hasOwnProperty.call(props, x));
-    if (key) args[key] = value;
-  };
-  set(['chain','network'], 'base');
-  set(['name','tokenName'], input.name);
-  set(['symbol','ticker','tokenSymbol'], input.symbol);
-  set(['description','about'], input.description);
-  set(['imageUrl','imageURL','image','logoUrl','logo'], input.image);
-  set(['creator','creatorAddress','rewardRecipient','recipient','walletAddress'], input.address);
-  set(['rewardRecipients'], [{ address: input.address, bps: 10000 }]);
-  return args;
+function predictB20Address(deployer: Address, salt: `0x${string}`): Address {
+  const h = keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'bytes32' }], [deployer, salt]));
+  return (`0xB20000000000000000000000${h.slice(2, 20)}`) as Address;
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const address = clean(body?.rewardRecipient, 42);
-    const name = clean(body?.name, MAX_NAME);
-    const symbol = clean(body?.symbol, MAX_SYMBOL).toUpperCase();
-    const description = clean(body?.about, MAX_ABOUT);
-    const image = clean(body?.image, 2000);
+    const address = clean(body?.rewardRecipient, 42) as Address;
+    const name = clean(body?.name, 100);
+    const symbol = clean(body?.symbol, 10).toUpperCase();
+    const saltInput = clean(body?.salt, 200) || `${name}-${symbol}-${Date.now()}`;
 
-    if (!isAddress(address)) return NextResponse.json({ error: 'Invalid reward wallet address.' }, { status: 400 });
+    if (!isAddress(address)) return NextResponse.json({ error: 'Invalid creator wallet address.' }, { status: 400 });
     if (!name || !symbol) return NextResponse.json({ error: 'name and symbol are required.' }, { status: 400 });
     if (!/^[A-Z0-9]{1,10}$/.test(symbol)) return NextResponse.json({ error: 'Ticker must contain only A-Z and 0-9, max 10 characters.' }, { status: 400 });
 
-    const key = process.env.BONKER_MCP_KEY;
-    if (!key) {
-      return NextResponse.json({
-        error: 'Bonker gasless launch is not configured. Add BONKER_MCP_KEY (bnk_mcp_...) to Vercel Production. Create the key in your Bonker account; Bonker requires a connected wallet plus two linked social accounts and sponsors one Base launch per wallet per 24h.',
-      }, { status: 503 });
-    }
+    const salt = keccak256(toBytes(saltInput));
+    const params = encodeAbiParameters(
+      [{ type: 'uint8' }, { type: 'string' }, { type: 'string' }, { type: 'address' }, { type: 'uint8' }],
+      [B20_PARAMS_VERSION, name, symbol, address, B20_DECIMALS],
+    );
 
-    // Discover the live MCP schema first so the integration survives small API
-    // field-name changes without hard-coding Bonker internals.
-    const init = await mcpRequest('initialize', {
-      protocolVersion: '2025-03-26',
-      capabilities: {},
-      clientInfo: { name: 'B20 AI Launcher', version: '1.0.0' },
-    }, key, 1);
-    let sessionId = init.sessionId;
-    const listed = await mcpRequest('tools/list', {}, key, 2, sessionId);
-    sessionId = listed.sessionId;
-    const tools = listed.payload?.result?.tools || [];
-    const prepare = tools.find((t: any) => t.name === 'prepare_launch');
-    if (!prepare) throw new Error('Bonker MCP does not expose prepare_launch right now.');
-
-    const prepared = await mcpRequest('tools/call', {
-      name: 'prepare_launch',
-      arguments: buildPrepareArgs(prepare.inputSchema, { name, symbol, description, image, address }),
-    }, key, 3, sessionId);
-    sessionId = prepared.sessionId;
-
-    const preparedData = toolResult(prepared.payload);
-    const launchId = findDeep(preparedData, ['launchId','launch_id','id','preparedLaunchId']);
-    if (!launchId) {
-      const errorText = findDeep(preparedData, ['error','message']);
-      throw new Error(errorText || 'Bonker prepared the launch but returned no launch ID.');
-    }
-
-    const launchTool = tools.find((t: any) => t.name === 'launch_token');
-    if (!launchTool) throw new Error('Bonker MCP does not expose launch_token right now.');
-    const launchProps = launchTool.inputSchema?.properties || {};
-    const launchKey = ['launchId','launch_id','preparedLaunchId','id'].find((x) => Object.prototype.hasOwnProperty.call(launchProps, x)) || 'launchId';
-    const launched = await mcpRequest('tools/call', {
-      name: 'launch_token',
-      arguments: { [launchKey]: launchId },
-    }, key, 4, sessionId);
-
-    const launchedData = toolResult(launched.payload);
-    const tokenAddress = findDeep(launchedData, ['tokenAddress','token_address','address','contractAddress']);
-    const txHash = findDeep(launchedData, ['txHash','tx_hash','transactionHash','transaction_hash','hash']);
+    const grantRole = encodeFunctionData({ abi: TOKEN_ABI, functionName: 'grantRole', args: [MINT_ROLE, address] });
+    const mint = encodeFunctionData({ abi: TOKEN_ABI, functionName: 'mint', args: [address, DEFAULT_SUPPLY] });
+    const initCalls = [grantRole, mint];
+    const data = encodeFunctionData({ abi: FACTORY_ABI, functionName: 'createB20', args: [B20_ASSET_VARIANT, salt, params, initCalls] });
 
     return NextResponse.json({
       ok: true,
-      provider: 'bonker',
+      provider: 'base-b20-native',
       sponsored: true,
-      chain: 'base',
-      tokenAddress,
-      txHash,
-      launchId,
+      chain: 'base-mainnet',
+      chainId: 8453,
+      to: B20_FACTORY,
+      data,
+      value: '0x0',
+      tokenAddress: predictB20Address(address, salt),
       rewardRecipient: address,
-      note: 'Bonker gas-sponsored launch. One sponsored launch per wallet per rolling 24h.',
+      supply: DEFAULT_SUPPLY.toString(),
+      paymasterProxy: '/api/paymaster',
+      note: 'Native Base B20 Asset creation. Gas is sponsored by the configured Coinbase Paymaster; user does not send ETH in this call.',
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Bonker launch failed.';
-    return NextResponse.json({ error: message, provider: 'bonker' }, { status: 502 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'B20 launch preparation failed.' }, { status: 400 });
   }
 }
