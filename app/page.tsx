@@ -1,11 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
-import { base } from 'wagmi/chains';
-import { Cc0B20Launchpad } from '@cc0company/sdk';
 import { randomSalt, svgAvatar } from '@/lib/b20';
-import type { Address } from 'viem';
 
 type Token = { name: string; symbol: string; about: string; image: string; salt: `0x${string}` };
 const A = ['Nova','Hyper','Pixel','Quantum','Solar','Neon','Aero','Lunar','Turbo','Meta','Cosmo','Vertex'];
@@ -19,23 +16,23 @@ export default function Home() {
   const [tokens, setTokens] = useState<Token[]>([]); const [status, setStatus] = useState('Ready'); const [deployed, setDeployed] = useState(0);
   const { address, isConnected } = useAccount(); const { connect, connectors } = useConnect(); const { disconnect } = useDisconnect();
   async function connectWallet() { const connector = connectors[0]; if (connector) connect({ connector }); }
-  function generate() { setTokens(generateTokens(prompt)); setDeployed(0); setStatus('Preview generated — sponsorship checked at launch'); }
+  function generate() { setTokens(generateTokens(prompt)); setDeployed(0); setStatus('Preview generated — ready for sponsored launch'); }
   async function deployAll() {
     if (!address || !tokens.length) return;
     try {
-      setStatus('Checking CC0 gas sponsorship…');
-      const b20 = new Cc0B20Launchpad({ chainId: base.id });
-      const sponsorship = await b20.sponsorshipStatus();
-      if (!sponsorship.active) throw new Error('CC0 sponsorship is not active right now. No paid fallback was used.');
-      setStatus(`CC0 sponsorship ACTIVE — launching ${tokens.length} B20(s)…`);
+      setStatus('Checking CC0 sponsored gas…');
       for (let i = deployed; i < tokens.length; i++) {
         const t = tokens[i];
-        await b20.launchB20Sponsored({ name: t.name, symbol: t.symbol, image: t.image, supply: '1000000000', rewardRecipient: address as Address, lpPreset: 'degen' });
-        setDeployed(i + 1); setStatus(`Sponsored: ${i + 1}/${tokens.length} B20 deployed — gas paid by CC0`);
+        setStatus(`Sponsored launch ${i + 1}/${tokens.length}…`);
+        const response = await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: t.name, symbol: t.symbol, about: t.about, image: t.image, rewardRecipient: address }) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || 'Sponsored launch failed');
+        setDeployed(i + 1);
+        setStatus(`LIVE ${i + 1}/${tokens.length} — CC0 paid deployment gas`);
       }
-      setStatus(`Done — ${tokens.length} sponsored B20 launch(es). Wallet gas: 0 ETH.`);
+      setStatus(`Done — ${tokens.length} B20 launch(es). User wallet gas: 0 ETH.`);
     } catch (e) { setStatus(`Stopped safely: ${e instanceof Error ? e.message : 'sponsored launch failed'}`); }
   }
   const canDeploy = isConnected && !!address && tokens.length > 0;
-  return <main className="wrap"><header><div><div className="eyebrow">BASE · B20 · CC0 SPONSORED</div><h1>B20 AI Launcher</h1><p>Prompt → generate → sponsored launch. No seed phrase. No paid fallback.</p></div>{isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <button onClick={connectWallet}>Connect Wallet</button>}</header><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} /><div className="actions"><button onClick={generate}>Generate Preview</button>{canDeploy && <button className="primary" onClick={deployAll}>🚀 Sponsored Deploy {tokens.length}</button>}</div><div className="status"><span className="dot" />{status} · Base Mainnet</div></section>{tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div><div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt=""/><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div></section>}<section className="note"><strong>Gas sponsorship:</strong> CC0 sponsorship is checked first. If inactive/capped, the app stops instead of asking your wallet to pay gas.</section></main>;
+  return <main className="wrap"><header><div><div className="eyebrow">BASE · B20 · CC0 SPONSORED</div><h1>B20 AI Launcher</h1><p>Prompt → generate → sponsored launch. No seed phrase. No paid fallback.</p></div>{isConnected ? <button className="ghost" onClick={() => disconnect()}>{address?.slice(0, 6)}…{address?.slice(-4)}</button> : <button onClick={connectWallet}>Connect Wallet</button>}</header><section className="card hero"><label>Describe your launch</label><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={4} /><div className="actions"><button onClick={generate}>Generate Preview</button>{canDeploy && <button className="primary" onClick={deployAll}>🚀 Sponsored Deploy {tokens.length}</button>}</div><div className="status"><span className="dot" />{status} · Base Mainnet</div></section>{tokens.length > 0 && <section className="card"><div className="sectionHead"><h2>Preview</h2><span>{deployed}/{tokens.length} deployed</span></div><div className="grid">{tokens.map((t, i) => <article className="token" key={t.salt}><img src={t.image} alt=""/><div><strong>{t.name}</strong><b>{t.symbol}</b><p>{t.about}</p></div><small>#{i + 1}</small></article>)}</div></section>}<section className="note"><strong>Gas sponsorship:</strong> deployment requests go through the server-side CC0 sponsored path. If CC0 sponsorship/session is unavailable, the app stops and never asks your wallet to pay gas.</section></main>;
 }
