@@ -5,8 +5,7 @@ import { base } from 'viem/chains';
 export const runtime = 'nodejs';
 const OPENLAUNCH_FACTORY = '0x815542E8b392389A1389E22E588E4B62A67Ade72' as Address;
 const DEFAULT_SUPPLY = BigInt('1000000000000000000000000000');
-// OpenLaunch requires a multiple of 200 strictly above the minimum usable tick.
-// 184,200 is the documented ETH launch tick (~10 ETH FDV for 1B supply).
+// OpenLaunch requires a valid tick aligned to its tick spacing.
 const START_TICK = 184200;
 const LP_FEE = 0;
 const ZERO = '0x0000000000000000000000000000000000000000' as Address;
@@ -44,7 +43,7 @@ async function launchData(body: Json) {
     address: OPENLAUNCH_FACTORY,
     abi: FIND_SALT_ABI,
     functionName: 'findSalt',
-    args: [creator, baseSalt, name, symbol, DEFAULT_SUPPLY, metadataURI, ZERO, 32n],
+    args: [creator, baseSalt, name, symbol, DEFAULT_SUPPLY, metadataURI, ZERO, BigInt('32')],
   });
 
   return encodeFunctionData({ abi: LAUNCH_ABI, functionName: 'launch', args: [{ name, symbol, metadataURI, quote: ZERO, supply: DEFAULT_SUPPLY, startTick: START_TICK, lpFee: LP_FEE, salt, recipients: [] }] });
