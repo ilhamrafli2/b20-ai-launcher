@@ -6,7 +6,9 @@ export const runtime = 'nodejs';
 // OpenLaunch Base mainnet factory. One launch() call creates a fixed-supply
 // ERC-20, opens a Uniswap v4 pool and permanently locks the supply as LP.
 const OPENLAUNCH_FACTORY = '0x815542E8b392389A1389E22E588E4B62A67Ade72' as Address;
-const DEFAULT_SUPPLY = 1_000_000_000n * 10n ** 18n;
+// Keep the value as a decimal string so this file does not require BigInt
+// literal syntax during TypeScript's lower-target type checking.
+const DEFAULT_SUPPLY = BigInt('1000000000000000000000000000');
 const START_TICK = 0;
 const LP_FEE = 0;
 const ZERO = '0x0000000000000000000000000000000000000000' as Address;
