@@ -6,7 +6,8 @@ const OPENLAUNCH_FACTORY = '0x815542E8b392389A1389E22E588E4B62A67Ade72' as Addre
 const DEFAULT_SUPPLY = BigInt('1000000000000000000000000000');
 // OpenLaunch requires a valid tick aligned to 200 and above the minimum tick.
 const START_TICK = 184200;
-const LP_FEE = 0;
+// Match the factory's tested launch configuration: 1% static LP fee.
+const LP_FEE = 10000;
 const ZERO = '0x0000000000000000000000000000000000000000' as Address;
 
 const LAUNCH_ABI = [{ type: 'function', name: 'launch', stateMutability: 'nonpayable', inputs: [{ name: 'p', type: 'tuple', components: [
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
       chainId: 8453,
       calls,
       count: items.length,
-      note: `Prepared ${items.length} direct OpenLaunch calls without RPC preflight. Native ETH quote makes salt ordering deterministic; launch batches are sponsored by the connected Smart Account.`,
+      note: `Prepared ${items.length} direct OpenLaunch calls without RPC preflight. Native ETH quote makes salt ordering deterministic; tested 1% launch fee configuration is used.`,
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Launch preparation failed.' }, { status: 400 });
