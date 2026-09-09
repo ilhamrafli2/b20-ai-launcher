@@ -39,9 +39,6 @@ function buildLaunch(body: Json, index: number) {
   const salt = keccak256(toBytes(`${creator}:${saltInput}`));
   const args = [{
     name, symbol, metadataURI, quote: ZERO, supply: DEFAULT_SUPPLY, startTick: START_TICK, lpFee: LP_FEE, salt,
-    // Explicitly route 100% of trading fees to the connected launcher. This is
-    // valid on the deployed OpenLaunch contract and avoids relying on the
-    // empty-recipient default across deployed contract revisions.
     recipients: [{ payout: creator, bps: 10000 }] as { payout: Address; bps: number }[],
   }] as const;
   return { creator, args, salt, metadataURI, data: encodeFunctionData({ abi: LAUNCH_ABI, functionName: 'launch', args }) };
@@ -63,8 +60,6 @@ export async function POST(request: Request) {
     const rpcUrl = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
     const client = createPublicClient({ chain: base, transport: http(rpcUrl) });
 
-    // Confirm the exact CREATE2 result before simulation. Native ETH uses zero
-    // as quote, so any non-zero predicted token address satisfies ordering.
     let predictedToken = '';
     try {
       predictedToken = await client.readContract({
@@ -74,9 +69,10 @@ export async function POST(request: Request) {
         args: [built[0].creator, built[0].salt, built[0].args[0].name, built[0].args[0].symbol, DEFAULT_SUPPLY, built[0].metadataURI],
       });
     } catch (predictionError) {
+      const detail = errorText(predictionError);
       return NextResponse.json({
-        error: 'OpenLaunch preflight could not predict the token address.',
-        revert: errorText(predictionError),
+        error: `OpenLaunch preflight failed: ${detail}`,
+        revert: detail,
         hint: 'Base RPC/factory read failed before wallet confirmation.',
       }, { status: 422 });
     }
@@ -84,11 +80,12 @@ export async function POST(request: Request) {
     try {
       await client.simulateContract({ address: OPENLAUNCH_FACTORY, abi: LAUNCH_ABI, functionName: 'launch', args: built[0].args, account: built[0].creator });
     } catch (simulationError) {
+      const detail = errorText(simulationError);
       return NextResponse.json({
-        error: 'OpenLaunch simulation reverted before wallet confirmation.',
-        revert: errorText(simulationError),
+        error: `OpenLaunch simulation reverted: ${detail}`,
+        revert: detail,
         predictedToken,
-        hint: 'The launcher stopped before spending gas. The exact nested revert is returned above.',
+        hint: 'No wallet confirmation was requested and no gas was spent. Fix the exact revert above, then retry.',
       }, { status: 422 });
     }
 
