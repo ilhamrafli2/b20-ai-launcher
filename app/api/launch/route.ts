@@ -3,7 +3,7 @@ import { encodeFunctionData, isAddress, type Address } from 'viem';
 
 export const runtime = 'nodejs';
 const OPENLAUNCH_FACTORY = '0x815542E8b392389A1389E22E588E4B62A67Ade72' as Address;
-const DEFAULT_SUPPLY = 0n;
+const DEFAULT_SUPPLY = BigInt(0);
 const START_TICK = 184200;
 const LP_FEE = 10000;
 const ZERO = '0x0000000000000000000000000000000000000000' as Address;
