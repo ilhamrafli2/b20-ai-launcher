@@ -29,36 +29,57 @@ function scoreProduct(p) {
   return Math.min(99, score);
 }
 
-function makeDrafts(p) {
-  const name = p.name;
+function localDrafts(p) {
   const price = p.price ? ` sekitar ${p.price}` : '';
   const proof = p.rating ? ` Rating ${p.rating}.` : '';
-  const link = p.url;
   return [
-    { angle: 'Masalah → solusi', hook: `Kalau kamu sering ${p.problem || 'punya masalah ini'}, coba lihat ${name}.`, body: `Bukan barang wajib buat semua orang, tapi kalau masalahnya memang kamu alami, ini bisa jadi solusi simpel${price}.${proof}` },
-    { angle: 'Temuan murah', hook: `Nemunya pas lagi scroll: ${name}.`, body: `Yang menarik bukan cuma harganya, tapi fungsi yang ditawarkannya. Cek detail dan review dulu sebelum beli.` },
-    { angle: 'POV', hook: `POV: akhirnya nemu ${name} yang sesuai kebutuhan.`, body: `Kalau memang lagi cari kategori ini, masukin wishlist dulu lalu bandingkan dengan produk lain.` },
-    { angle: 'Rekomendasi', hook: `${name} masuk daftar yang layak dicek.`, body: `Terutama kalau kamu cari produk di kisaran harga${price || ' yang terjangkau'}.` },
-    { angle: 'Soft sell', hook: `Simpan dulu kalau belum butuh sekarang.`, body: `${name} bisa jadi berguna saat kamu memang membutuhkan kategori ini. Jangan checkout hanya karena FOMO.` },
-  ].map((d, i) => ({
-    ...d,
-    cta: `Cek produk: ${link}`,
-    score: Math.max(70, scoreProduct(p) - i * 2),
-  }));
+    { angle: 'Masalah → solusi', hook: `Kalau kamu sering ${p.problem || 'punya masalah ini'}, coba lihat ${p.name}.`, body: `Kalau masalahnya memang kamu alami, ini bisa jadi solusi simpel${price}.${proof}` },
+    { angle: 'Temuan murah', hook: `Nemunya pas lagi scroll: ${p.name}.`, body: `Yang menarik adalah fungsi yang ditawarkannya. Cek detail dan review dulu sebelum beli.` },
+    { angle: 'POV', hook: `POV: akhirnya nemu ${p.name} yang sesuai kebutuhan.`, body: `Kalau memang lagi cari kategori ini, masukin wishlist dulu lalu bandingkan.` },
+    { angle: 'Rekomendasi', hook: `${p.name} masuk daftar yang layak dicek.`, body: `Terutama kalau kamu cari produk di kisaran harga${price || ' yang terjangkau'}.` },
+    { angle: 'Soft sell', hook: `Simpan dulu kalau belum butuh sekarang.`, body: `${p.name} bisa jadi berguna saat kamu memang membutuhkan kategori ini. Jangan checkout hanya karena FOMO.` },
+  ].map((d, i) => ({ ...d, caption: `${d.body} #affiliate`, cta: `Cek produk: ${p.url}`, score: Math.max(70, scoreProduct(p) - i * 2) }));
+}
+
+async function aiDrafts(p) {
+  const key = process.env.AI_API_KEY;
+  if (!key) return null;
+  const base = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
+  const model = process.env.AI_MODEL || 'gpt-4o-mini';
+  const prompt = `Buat JSON object dengan key drafts berisi tepat 5 draft affiliate berbahasa Indonesia. Tiap item: angle, hook, caption, cta, score. Jangan mengarang klaim, diskon, rating, penjualan, pengalaman pribadi, atau hasil. Caption natural, singkat, anti-spam, dan sertakan disclosure bahwa link adalah link affiliate. Produk: ${JSON.stringify(p)}`;
+  const r = await fetch(`${base}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ model, temperature: 0.8, messages: [
+      { role: 'system', content: 'Kamu editor affiliate Indonesia yang jujur dan anti-clickbait.' },
+      { role: 'user', content: prompt },
+    ], response_format: { type: 'json_object' } }),
+  });
+  if (!r.ok) throw new Error(`AI provider ${r.status}`);
+  const data = await r.json();
+  const parsed = JSON.parse(data?.choices?.[0]?.message?.content || '{}');
+  if (!Array.isArray(parsed.drafts)) throw new Error('Invalid AI output');
+  return parsed.drafts.slice(0, 5);
 }
 
 const products = readJson(PRODUCTS, []);
 const existing = readJson(QUEUE, []);
-const generated = products
-  .filter(p => p?.name && p?.url)
-  .map(p => ({
-    id: p.id || p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+const generated = [];
+
+for (const p of products.filter(p => p?.name && p?.url)) {
+  let drafts = null;
+  try { drafts = await aiDrafts(p); } catch (e) { console.log(`AI fallback for ${p.name}: ${e.message}`); }
+  drafts ||= localDrafts(p);
+  generated.push({
+    id: `${p.id || p.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}`,
     generatedAt: new Date().toISOString(),
     status: 'ready_for_review',
     product: p,
     productScore: scoreProduct(p),
-    drafts: makeDrafts(p),
-  }));
+    mode: process.env.AI_API_KEY ? 'ai-provider-or-fallback' : 'free-local-agent',
+    drafts,
+  });
+}
 
 const output = [...existing, ...generated].slice(-100);
 fs.writeFileSync(QUEUE, JSON.stringify(output, null, 2) + '\n');
