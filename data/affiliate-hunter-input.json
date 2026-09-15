@@ -1,0 +1,11 @@
+[
+  {
+    "name": "Contoh Produk",
+    "price": 129000,
+    "commission": 10,
+    "category": "rumah tangga",
+    "rating": 4.8,
+    "sales": 1500,
+    "url": "https://example.com/affiliate"
+  }
+]
