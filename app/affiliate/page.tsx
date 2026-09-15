@@ -21,7 +21,15 @@ export default function AffiliateAgent(){
   setBusy(true); setDrafts([]); setStatus('🔎 Membaca link produk…');
   try{
    const rr=await fetch('/api/affiliate/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
-   const rd=await rr.json(); if(!rr.ok)throw new Error(rd.error||'Link produk tidak bisa dibaca');
+   const rd=await rr.json();
+   if(!rr.ok){
+    if(rd.canContinue){
+      setProduct(p=>({...p,url:rd.finalUrl||url,name:p.name||rd.product?.name||''}));
+      setStatus('⚠️ Link tidak memberi metadata produk. Isi nama produk di kolom di bawah, lalu klik GENERATE 5.');
+      return;
+    }
+    throw new Error(rd.error||'Link produk tidak bisa dibaca');
+   }
    const resolved={...rd.product,url};
    setProduct(resolved);
    setStatus('🤖 Data ketemu. AI sedang membuat 5 konten…');
@@ -29,6 +37,17 @@ export default function AffiliateAgent(){
    try{await fetch('/api/affiliate/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:resolved})});await loadCatalog();}catch{}
    setStatus(`Selesai ✓ ${gd.drafts?.length||0} konten dibuat · ${gd.mode}`);
   }catch(e){setStatus(e instanceof Error?e.message:'Gagal memproses link');}finally{setBusy(false)}
+ }
+ async function manualGenerate(){
+  if(!product.url.trim())return setStatus('Paste link produk dulu.');
+  if(!product.name.trim())return setStatus('Isi nama produk dulu supaya AI bisa membuat konten yang relevan.');
+  setBusy(true);setDrafts([]);setStatus('🤖 Membuat 5 konten dari data manual…');
+  try{
+   const p={...product,url:product.url.trim(),name:product.name.trim()};
+   const gd=await generateFor(p);
+   try{await fetch('/api/affiliate/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product:p})});await loadCatalog();}catch{}
+   setStatus(`Selesai ✓ ${gd.drafts?.length||0} konten dibuat · ${gd.mode}`);
+  }catch(e){setStatus(e instanceof Error?e.message:'Gagal membuat konten');}finally{setBusy(false)}
  }
  async function runAgent(){setBusy(true);setStatus('🤖 Agent menilai catalog dan membuat konten…');try{const r=await fetch('/api/affiliate/run',{method:'POST'});const d=await r.json();if(!r.ok)throw new Error(d.error||'Agent gagal');await loadQueue();setTab('queue');setStatus(`Agent selesai · ${d.generated} produk baru masuk queue`)}catch(e){setStatus(e instanceof Error?e.message:'Agent gagal')}finally{setBusy(false)}}
  async function saveProduct(){if(!product.name||!product.url)return setStatus('Link produk belum diisi.');setBusy(true);try{const r=await fetch('/api/affiliate/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Gagal');await loadCatalog();setStatus('Produk tersimpan ✓')}catch(e){setStatus(e instanceof Error?e.message:'Gagal')}finally{setBusy(false)}}
@@ -39,7 +58,8 @@ export default function AffiliateAgent(){
   <header style={{display:'flex',justifyContent:'space-between',gap:20,alignItems:'center',flexWrap:'wrap'}}><div><small style={{letterSpacing:2,opacity:.55}}>FREE · AFFILIATE AGENT</small><h1 style={{margin:'4px 0'}}>Affiliate Operator</h1><p style={{opacity:.65}}>Paste link → Auto Analyze → AI Content → Approval</p></div><button onClick={runAgent} disabled={busy} style={{padding:'13px 18px',borderRadius:12,border:0,fontWeight:700}}>{busy?'⚙️ Agent bekerja…':'🤖 RUN AGENT'}</button></header>
   <nav style={{display:'flex',gap:8,margin:'22px 0',flexWrap:'wrap'}}>{[['generator','🤖 Generator'],['catalog','🗂️ Product Catalog'],['queue','📋 Approval Queue']].map(([k,label])=><button key={k} onClick={()=>{setTab(k as any);if(k==='queue')loadQueue();if(k==='catalog')loadCatalog()}} style={{padding:'10px 14px',borderRadius:10,border:'1px solid #ddd',fontWeight:tab===k?'700':'400'}}>{label}</button>)}</nav>
   {tab==='generator'?<>
-   <section style={{border:'1px solid #ddd',borderRadius:16,padding:20}}><h2>1. Paste Link Produk</h2><p style={{opacity:.65,marginTop:-6}}>Cukup kasih link. Sistem mencoba membaca nama, harga, rating, deskripsi, gambar, lalu membuat konten.</p><input autoFocus style={{width:'100%',fontSize:16,padding:14,borderRadius:10,border:'1px solid #ccc'}} placeholder="Paste link Shopee Affiliate di sini…" value={product.url} onChange={e=>setProduct({...product,url:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'&&!busy)analyzeAndGenerate()}}/><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}><button onClick={analyzeAndGenerate} disabled={busy} style={{padding:'13px 20px',borderRadius:10,border:0,fontWeight:700}}>{busy?'⏳ Memproses…':'✨ ANALYZE + GENERATE 5'}</button><button onClick={saveProduct} disabled={busy||!product.name} style={{padding:'13px 18px',borderRadius:10}}>＋ Simpan</button></div><div style={{marginTop:14,opacity:.7}}>{status}</div>
+   <section style={{border:'1px solid #ddd',borderRadius:16,padding:20}}><h2>1. Paste Link Produk</h2><p style={{opacity:.65,marginTop:-6}}>Cukup kasih link. Sistem mencoba membaca nama, harga, rating, deskripsi, gambar, lalu membuat konten.</p><input autoFocus style={{width:'100%',fontSize:16,padding:14,borderRadius:10,border:'1px solid #ccc'}} placeholder="Paste link Shopee Affiliate di sini…" value={product.url} onChange={e=>setProduct({...product,url:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'&&!busy)analyzeAndGenerate()}}/><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}><button onClick={analyzeAndGenerate} disabled={busy} style={{padding:'13px 20px',borderRadius:10,border:0,fontWeight:700}}>{busy?'⏳ Memproses…':'✨ ANALYZE + GENERATE 5'}</button><button onClick={manualGenerate} disabled={busy||!product.name} style={{padding:'13px 18px',borderRadius:10}}>✍️ GENERATE DARI DATA MANUAL</button><button onClick={saveProduct} disabled={busy||!product.name} style={{padding:'13px 18px',borderRadius:10}}>＋ Simpan</button></div><div style={{marginTop:14,opacity:.7}}>{status}</div>
+    <div style={{marginTop:16,padding:14,borderRadius:12,border:'1px dashed #ccc'}}><label style={{display:'block',fontWeight:700,marginBottom:7}}>Nama produk <span style={{opacity:.55,fontWeight:400}}>(fallback jika Shopee tidak memberi metadata)</span></label><input style={{width:'100%',fontSize:16,padding:12,borderRadius:10,border:'1px solid #ccc'}} placeholder="Contoh: Vacuum Cleaner Mini Portable" value={product.name} onChange={e=>setProduct({...product,name:e.target.value})}/><div style={{fontSize:12,opacity:.55,marginTop:7}}>Untuk short link Shopee tertentu, server tidak bisa membaca detail produk. Ini bukan berarti linknya rusak.</div></div>
     {product.name&&<div style={{marginTop:18,padding:14,borderRadius:12,background:'#f7f7f7'}}><b>{product.name}</b><div style={{marginTop:5,opacity:.7}}>{product.price||'Harga tidak tersedia'} · rating {product.rating||'tidak tersedia'} · {product.source||'Shopee'}</div>{product.problem&&<div style={{marginTop:7,fontSize:14}}>{product.problem.slice(0,350)}</div>}<div style={{marginTop:7,fontSize:12,opacity:.55}}>Komisi: {product.commission||'belum tersedia dari halaman publik'}</div></div>}
    </section>
    {drafts.length>0&&<section style={{marginTop:20}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}><h2>2. Content Studio</h2><button onClick={addQueue} disabled={busy} style={{padding:'10px 14px',borderRadius:10}}>✓ Save to Approval Queue</button></div><div style={{display:'grid',gap:12}}>{drafts.map((d,i)=><article key={i} style={{border:'1px solid #ddd',borderRadius:14,padding:16}}><div style={{display:'flex',justifyContent:'space-between'}}><b>#{i+1} · {d.angle||'AI angle'} · {d.score}/100</b><button onClick={()=>copy(d)}>Copy</button></div><h3>{d.hook}</h3><p style={{whiteSpace:'pre-wrap'}}>{d.caption}</p><p><b>{d.cta}</b></p></article>)}</div></section>}
