@@ -2,45 +2,25 @@
 
 import { useState } from 'react';
 
-type Draft = { hook: string; caption: string; cta: string; score: number };
-type Product = { name: string; price?: string; commission?: string; url: string; niche?: string };
+type Draft={angle:string;hook:string;caption:string;cta:string;score:number};
+type Product={name:string;price?:string;commission?:string;url:string;niche?:string;problem?:string;rating?:string};
 
-export default function AffiliateAgent() {
-  const [product, setProduct] = useState<Product>({ name: '', price: '', commission: '', url: '', niche: 'barang viral' });
-  const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('Ready');
+type QueueItem={id:string;status:string;product:Product;productScore:number;drafts:Draft[]};
 
-  async function generate() {
-    if (!product.name || !product.url) return setStatus('Isi nama produk dan link affiliate dulu.');
-    setBusy(true); setStatus('Agent sedang membuat variasi konten…');
-    try {
-      const r = await fetch('/api/affiliate/generate', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ product }) });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Gagal membuat konten');
-      setDrafts(d.drafts || []); setStatus(`Selesai · ${d.drafts?.length || 0} draft dibuat`);
-    } catch (e) { setStatus(e instanceof Error ? e.message : 'Gagal'); }
-    finally { setBusy(false); }
-  }
-
-  return <main style={{maxWidth:1100,margin:'40px auto',padding:20,fontFamily:'system-ui'}}>
-    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-      <div><div style={{fontSize:12,letterSpacing:2,opacity:.6}}>FREE · AFFILIATE AGENT</div><h1 style={{margin:'6px 0'}}>Affiliate Agent</h1><p style={{opacity:.7}}>Product → AI-style content engine → approval queue.</p></div>
-      <a href="/" style={{opacity:.7}}>← B20 Launcher</a>
-    </div>
-    <section style={{border:'1px solid #ddd',borderRadius:16,padding:20,marginTop:20}}>
-      <h2>1. Masukkan produk</h2>
-      <div style={{display:'grid',gap:10,gridTemplateColumns:'2fr 1fr 1fr'}}>
-        <input placeholder="Nama produk" value={product.name} onChange={e=>setProduct({...product,name:e.target.value})} />
-        <input placeholder="Harga" value={product.price} onChange={e=>setProduct({...product,price:e.target.value})} />
-        <input placeholder="Komisi" value={product.commission} onChange={e=>setProduct({...product,commission:e.target.value})} />
-      </div>
-      <input style={{width:'100%',marginTop:10}} placeholder="Link affiliate" value={product.url} onChange={e=>setProduct({...product,url:e.target.value})} />
-      <input style={{width:'100%',marginTop:10}} placeholder="Niche" value={product.niche} onChange={e=>setProduct({...product,niche:e.target.value})} />
-      <button onClick={generate} disabled={busy} style={{marginTop:14,padding:'12px 18px',borderRadius:10,border:0,cursor:'pointer'}}>{busy?'⚙️ Agent bekerja…':'🤖 Generate 5 Variasi'}</button>
-      <span style={{marginLeft:12,opacity:.65}}>{status}</span>
-    </section>
-    {drafts.length>0 && <section style={{marginTop:20}}><h2>2. Approval Queue</h2><div style={{display:'grid',gap:12}}>{drafts.map((d,i)=><article key={i} style={{border:'1px solid #ddd',borderRadius:14,padding:16}}><div style={{display:'flex',justifyContent:'space-between'}}><b>#{i+1} · Score {d.score}/100</b><button onClick={()=>navigator.clipboard?.writeText(`${d.hook}\n\n${d.caption}\n\n${d.cta}\n${product.url}`)}>Copy</button></div><p><b>{d.hook}</b></p><p style={{whiteSpace:'pre-wrap'}}>{d.caption}</p><p>{d.cta}</p></article>)}</div></section>}
-    <p style={{marginTop:25,fontSize:13,opacity:.6}}>V1 sengaja tidak auto-post. Gunakan API resmi platform saat integrasi distribusi ditambahkan; jangan simpan password atau private key.</p>
-  </main>;
+export default function AffiliateAgent(){
+ const [product,setProduct]=useState<Product>({name:'',price:'',commission:'',url:'',niche:'barang viral',problem:'',rating:''});
+ const [drafts,setDrafts]=useState<Draft[]>([]); const [busy,setBusy]=useState(false); const [status,setStatus]=useState('Ready'); const [tab,setTab]=useState<'generator'|'queue'>('generator');
+ const [queue,setQueue]=useState<QueueItem[]>([]);
+ async function generate(){if(!product.name||!product.url)return setStatus('Isi nama produk dan link affiliate dulu.');setBusy(true);setStatus('Agent sedang bekerja…');try{const r=await fetch('/api/affiliate/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Gagal');setDrafts(d.drafts||[]);setStatus(`Selesai · ${d.drafts?.length||0} draft`);}catch(e){setStatus(e instanceof Error?e.message:'Gagal')}finally{setBusy(false)}}
+ function copy(d:Draft){navigator.clipboard?.writeText(`${d.hook}\n\n${d.caption}\n\n${d.cta}`);setStatus('Konten disalin ✓')}
+ function addQueue(){if(!drafts.length)return;const item={id:`manual-${Date.now()}`,status:'ready_for_review',product,drafts,productScore:Math.max(...drafts.map(x=>x.score))};setQueue(q=>[item,...q]);setTab('queue');setStatus('Masuk approval queue ✓')}
+ return <main style={{maxWidth:1150,margin:'0 auto',padding:'32px 18px',fontFamily:'system-ui'}}>
+  <header style={{display:'flex',justifyContent:'space-between',gap:20,alignItems:'center',flexWrap:'wrap'}}><div><small style={{letterSpacing:2,opacity:.55}}>FREE · AFFILIATE AGENT</small><h1 style={{margin:'4px 0'}}>Affiliate Operator</h1><p style={{opacity:.65}}>Product → Score → Content → Approval → Publish</p></div><a href="/" style={{opacity:.65}}>← B20</a></header>
+  <nav style={{display:'flex',gap:8,margin:'22px 0'}}>{[['generator','🤖 Generator'],['queue','📋 Approval Queue']].map(([k,label])=><button key={k} onClick={()=>setTab(k as any)} style={{padding:'10px 14px',borderRadius:10,border:'1px solid #ddd',fontWeight:tab===k?'700':'400'}}>{label}</button>)}</nav>
+  {tab==='generator'?<>
+   <section style={{border:'1px solid #ddd',borderRadius:16,padding:20}}><h2>1. Product Intelligence</h2><div style={{display:'grid',gap:10,gridTemplateColumns:'2fr 1fr 1fr'}}><input placeholder="Nama produk" value={product.name} onChange={e=>setProduct({...product,name:e.target.value})}/><input placeholder="Harga" value={product.price} onChange={e=>setProduct({...product,price:e.target.value})}/><input placeholder="Komisi / %" value={product.commission} onChange={e=>setProduct({...product,commission:e.target.value})}/></div><input style={{width:'100%',marginTop:10}} placeholder="Link affiliate" value={product.url} onChange={e=>setProduct({...product,url:e.target.value})}/><div style={{display:'grid',gap:10,gridTemplateColumns:'1fr 1fr',marginTop:10}}><input placeholder="Niche" value={product.niche} onChange={e=>setProduct({...product,niche:e.target.value})}/><input placeholder="Masalah yang diselesaikan" value={product.problem} onChange={e=>setProduct({...product,problem:e.target.value})}/></div><input style={{width:'100%',marginTop:10}} placeholder="Rating (opsional)" value={product.rating} onChange={e=>setProduct({...product,rating:e.target.value})}/><button onClick={generate} disabled={busy} style={{marginTop:14,padding:'12px 18px',borderRadius:10,border:0,cursor:'pointer'}}>{busy?'⚙️ Agent bekerja…':'✨ Generate 5 Konten'}</button><span style={{marginLeft:12,opacity:.6}}>{status}</span></section>
+   {drafts.length>0&&<section style={{marginTop:20}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}><h2>2. Content Studio</h2><button onClick={addQueue} style={{padding:'10px 14px',borderRadius:10}}>✓ Add to Approval Queue</button></div><div style={{display:'grid',gap:12}}>{drafts.map((d,i)=><article key={i} style={{border:'1px solid #ddd',borderRadius:14,padding:16}}><div style={{display:'flex',justifyContent:'space-between'}}><b>#{i+1} · {d.angle} · {d.score}/100</b><button onClick={()=>copy(d)}>Copy</button></div><h3>{d.hook}</h3><p style={{whiteSpace:'pre-wrap'}}>{d.caption}</p><p><b>{d.cta}</b></p></article>)}</div></section>}
+  </>:<section><div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:18}}>{[['Ready',queue.filter(x=>x.status==='ready_for_review').length],['Approved',queue.filter(x=>x.status==='approved').length],['Rejected',queue.filter(x=>x.status==='rejected').length]].map(x=><div key={String(x[0])} style={{border:'1px solid #ddd',borderRadius:14,padding:16}}><small>{x[0]}</small><h2 style={{margin:'5px 0'}}>{x[1]}</h2></div>)}</div>{queue.length===0?<div style={{padding:30,border:'1px dashed #bbb',borderRadius:14}}>Belum ada item. Generate konten lalu Add to Approval Queue.</div>:queue.map(item=><article key={item.id} style={{border:'1px solid #ddd',borderRadius:14,padding:18,marginBottom:12}}><div style={{display:'flex',justifyContent:'space-between',flexWrap:'wrap',gap:10}}><div><b>{item.product.name}</b><div style={{opacity:.65}}>Product score {item.productScore}/100 · {item.status}</div></div><div><button onClick={()=>setQueue(q=>q.map(x=>x.id===item.id?{...x,status:'approved'}:x))} style={{marginRight:8}}>✓ Approve</button><button onClick={()=>setQueue(q=>q.map(x=>x.id===item.id?{...x,status:'rejected'}:x))}>✕ Reject</button></div></div><div style={{display:'grid',gap:8,marginTop:12}}>{item.drafts.map((d,i)=><div key={i} style={{padding:12,border:'1px solid #eee',borderRadius:10}}><b>{d.angle}</b><p>{d.hook}</p><button onClick={()=>copy(d)}>Copy</button></div>)}</div></article>)}</section>}
+  <footer style={{marginTop:30,fontSize:13,opacity:.55}}>Tidak menyimpan password/cookie. Publishing hanya melalui API resmi platform yang diizinkan.</footer>
+ </main>
 }
