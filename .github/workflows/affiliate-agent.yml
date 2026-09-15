@@ -13,22 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run free affiliate agent
-        run: |
-          mkdir -p data
-          node - <<'NODE'
-          const fs = require('fs');
-          const file = 'data/affiliate-queue.json';
-          let q = [];
-          if (fs.existsSync(file)) q = JSON.parse(fs.readFileSync(file, 'utf8'));
-          q.push({ generatedAt: new Date().toISOString(), status: 'ready', note: 'Queue heartbeat. Add approved product records before distribution.' });
-          q = q.slice(-100);
-          fs.writeFileSync(file, JSON.stringify(q, null, 2) + '\n');
-          NODE
-      - name: Commit queue heartbeat
+      - name: Run affiliate agent
+        run: node scripts/affiliate-agent.mjs
+      - name: Commit generated queue
         run: |
           git config user.name 'affiliate-agent[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add data/affiliate-queue.json
-          git diff --cached --quiet || git commit -m 'chore: update affiliate agent queue'
+          git diff --cached --quiet || git commit -m 'chore: generate affiliate queue'
           git push
